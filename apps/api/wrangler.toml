@@ -1,0 +1,7 @@
+name = "hendy-api-worker"
+main = "src/index.ts"
+compatibility_date = "2026-03-01"
+
+[vars]
+ENVIRONMENT = "production"
+VIETSUB_WS_URL = "wss://your-vietsub-realtime-server.com/ws/vietsub"
