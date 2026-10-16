@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "vietsub-pro-realtime-gateway",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": { "ALLOWED_ORIGIN": "https://studio.example.com" },
+  "durable_objects": { "bindings": [{ "name": "VIETSUB_GATEWAY", "class_name": "VietsubGateway" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["VietsubGateway"] }],
+  "containers": [{
+    "class_name": "VietsubContainer",
+    "image": "../../apps/vietsub-realtime/Dockerfile",
+    "max_instances": 3,
+    "instance_type": { "vcpu": 1, "memory_mib": 4096, "disk_mb": 4000 }
+  }],
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+}

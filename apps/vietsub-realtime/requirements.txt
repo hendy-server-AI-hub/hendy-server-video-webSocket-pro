@@ -1,0 +1,1 @@
+fastapi>=0.115,<1\nuvicorn[standard]>=0.30,<1\nfaster-whisper>=1.1,<2\ndeep-translator>=1.11,<2\n
