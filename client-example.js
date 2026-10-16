@@ -1,67 +1,25 @@
-/** Minimal browser example for apps/studio-web.
- * `wsUrl` must point to wss://.../ws/vietsub in production.
- */
-export function connectVietsubRealtime({ wsUrl, onResult, onError, authToken }) {
-  const socket = new WebSocket(wsUrl);
+// Kết nối tới WebSocket server
+const ws = new WebSocket('ws://localhost:8000/ws/vietsub');
 
-  socket.addEventListener("open", () => {
-    if (authToken) {
-      // Required only when the server has REQUIRE_WS_AUTH=true.
-      socket.send(JSON.stringify({ type: "auth", token: authToken }));
-    }
-  });
+ws.onopen = function() {
+    console.log('Đã kết nối thành công tới Vietsub Realtime Server');
+    
+    // Gửi một gói tin mẫu lên server
+    const samplePayload = {
+        text: "Hello everyone, welcome to the realtime translation stream."
+    };
+    ws.send(JSON.stringify(samplePayload));
+};
 
-  socket.addEventListener("message", (event) => {
-    try {
-      const payload = JSON.parse(event.data);
-      if (payload.status === "error") {
-        onError?.(payload);
-      } else {
-        onResult?.(payload);
-      }
-    } catch {
-      onError?.({ code: "invalid_server_response" });
-    }
-  });
+ws.onmessage = function(event) {
+    const response = JSON.parse(event.data);
+    console.log('Nhận kết quả Vietsub từ Server:', response);
+};
 
-  socket.addEventListener("error", () => {
-    onError?.({ code: "websocket_error" });
-  });
+ws.onclose = function() {
+    console.log('Đã ngắt kết nối khỏi WebSocket server');
+};
 
-  return {
-    socket,
-    translate(text, { sourceLang = "auto", targetLang = "vi", requestId } = {}) {
-      if (socket.readyState !== WebSocket.OPEN) throw new Error("WebSocket is not connected");
-      socket.send(JSON.stringify({
-        type: "translate_text",
-        request_id: requestId ?? crypto.randomUUID(),
-        text,
-        source_lang: sourceLang,
-        target_lang: targetLang,
-      }));
-    },
-    async transcribeAudio(file, { sourceLang = "auto", targetLang = "vi", requestId } = {}) {
-      if (socket.readyState !== WebSocket.OPEN) throw new Error("WebSocket is not connected");
-      const audioBase64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const dataUrl = String(reader.result ?? "");
-          resolve(dataUrl.slice(dataUrl.indexOf(",") + 1));
-        };
-        reader.onerror = () => reject(reader.error ?? new Error("Could not read audio file"));
-        reader.readAsDataURL(file);
-      });
-      socket.send(JSON.stringify({
-        type: "transcribe_audio",
-        request_id: requestId ?? crypto.randomUUID(),
-        filename: file.name,
-        audio_base64: audioBase64,
-        source_lang: sourceLang,
-        target_lang: targetLang,
-      }));
-    },
-    close() {
-      socket.close(1000, "Client closed connection");
-    },
-  };
-}
+ws.onerror = function(error) {
+    console.error('Lỗi kết nối WebSocket:', error);
+};
