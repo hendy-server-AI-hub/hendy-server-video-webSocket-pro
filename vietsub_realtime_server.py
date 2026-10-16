@@ -5,7 +5,7 @@ Development:
     python vietsub_realtime_server.py
 
 Optional Colab/ngrok tunnel:
-    USE_NGROK=true NGROK_AUTHTOKEN=3KjBxb1xw4765cEawJKN5DbQnjk_83uNZTASh6zibJGgbv3Fo... python vietsub_realtime_server.py
+    USE_NGROK=true NGROK_AUTHTOKEN=... python vietsub_realtime_server.py
 
 WebSocket: /ws/vietsub
 Health:    /healthz

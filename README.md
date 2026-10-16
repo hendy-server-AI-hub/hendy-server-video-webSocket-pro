@@ -1,59 +1,104 @@
-# Vietsub Pro Realtime — Cloudflare + GitHub
+# Vietsub Realtime WebSocket Server
 
-Starter source for a Cloudflare Worker + Durable Object WebSocket gateway and a CPU Python/FastAPI/Faster-Whisper container. It has not been deployed to your account; validate current Cloudflare Containers support and Wrangler configuration before production.
+FastAPI WebSocket service for text translation and audio transcription + Vietnamese translation. Whisper loads lazily only for audio requests, and translation/transcription work runs off the ASGI event loop.
 
-## Flow
-Browser WSS → Worker (token + Origin check) → Durable Object → Python Container (FastAPI `/ws/vietsub`).
+## Install and run
 
-## Local run
-Python 3.11+, Docker, Node 22+:
 ```bash
-cd apps/vietsub-realtime
 python -m venv .venv
-# Windows: .venv\\Scripts\\activate
+# Linux/macOS
 source .venv/bin/activate
-pip install -r requirements.txt
-export INTERNAL_API_TOKEN='use-a-long-random-secret'
-export MODEL_SIZE=small
-uvicorn main:app --host 0.0.0.0 --port 8000
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+pip install -r requirements-realtime.txt
+python vietsub_realtime_server.py
 ```
-`GET /healthz` and `GET /api/v1/meta` are health/metadata endpoints. `large-v3` is resource-heavy on CPU; default `small` is for smoke testing. Benchmark before production.
 
-## Deploy
-1. Copy this folder into your GitHub repository (or merge folders into your monorepo).
-2. Set a unique Worker name in `apps/api/wrangler.jsonc`.
-3. Create a Cloudflare Workers Paid account/enable Containers if required.
-4. Install and authenticate: `npm install`, `npx wrangler login`.
-5. Add runtime secrets:
+Endpoints:
+- `GET /healthz`
+- `GET /api/v1/meta`
+- `WS /ws/vietsub`
+
+## WebSocket request: text translation
+
+```json
+{
+  "type": "translate_text",
+  "request_id": "req-001",
+  "text": "Hello, how are you?",
+  "source_lang": "auto",
+  "target_lang": "vi"
+}
+```
+
+For compatibility, a payload containing `text` without `type` is also treated as `translate_text`.
+
+## WebSocket request: audio transcription + translation
+
+The client sends audio as base64-encoded bytes. This is convenient for a prototype client but adds about 33% overhead; for large media, use a separate authenticated upload endpoint or object storage instead.
+
+```json
+{
+  "type": "transcribe_audio",
+  "request_id": "req-002",
+  "filename": "clip.wav",
+  "audio_base64": "<BASE64_AUDIO_BYTES>",
+  "source_lang": "auto",
+  "target_lang": "vi"
+}
+```
+
+The response includes `original`, `translated`, detected language, and timestamped segments.
+
+## Optional ngrok tunnel (development/Colab only)
+
+Do not put tokens in source code or commit them to Git. Set them as environment variables:
+
 ```bash
-npx wrangler secret put VIETSUB_WS_TOKEN --config apps/api/wrangler.jsonc
-npx wrangler secret put VIETSUB_INTERNAL_TOKEN --config apps/api/wrangler.jsonc
+# Linux/macOS
+export USE_NGROK=true
+export NGROK_AUTHTOKEN="your-token"
+python vietsub_realtime_server.py
 ```
-Use separate random secrets. Configure the same internal token in the Python container as `INTERNAL_API_TOKEN` using the supported runtime secret mechanism for the selected Container deployment. Never commit secrets.
-6. Set `ALLOWED_ORIGIN` to the exact Studio URL in `wrangler.jsonc`.
-7. Deploy with `npx wrangler deploy --config apps/api/wrangler.jsonc`.
-8. For GitHub Actions add repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The token needs the minimum Workers/Containers deployment permissions. Push to `main`.
 
-Cloudflare Workers Builds Git integration is an alternative to GitHub Actions. Avoid two competing production deploy pipelines.
+On Windows PowerShell:
 
-## WebSocket messages
-Text:
+```powershell
+$env:USE_NGROK="true"
+$env:NGROK_AUTHTOKEN="your-token"
+python .\vietsub_realtime_server.py
+```
+
+## Optional WebSocket auth and origin allowlist
+
+Set `REQUIRE_WS_AUTH=true` and `WS_API_TOKEN` to require an initial JSON message:
+
 ```json
-{"type":"translate_text","request_id":"r1","text":"Hello","source_lang":"auto","target_lang":"vi"}
+{"type":"auth","token":"your-shared-token"}
 ```
-Audio (base64; limited by `MAX_AUDIO_BYTES`):
-```json
-{"type":"transcribe_audio","request_id":"r2","audio_base64":"...","source_lang":"auto","target_lang":"vi","format":"wav"}
+
+Set `WS_ALLOWED_ORIGINS` to a comma-separated list of exact browser origins, for example:
+
+```text
+WS_ALLOWED_ORIGINS=https://studio.example.com,https://admin.example.com
 ```
-For long videos, upload to R2 and enqueue a background job rather than sending large base64 frames through WebSocket.
 
-## Variables
-Python: `INTERNAL_API_TOKEN` (required), `MODEL_SIZE` (small default), `COMPUTE_TYPE` (int8), `MAX_AUDIO_BYTES` (8 MiB), `MAX_TEXT_CHARS` (5000), `ALLOWED_ORIGINS`, `TRANSLATION_TIMEOUT_SECONDS`.
-Worker secrets: `VIETSUB_WS_TOKEN`, `VIETSUB_INTERNAL_TOKEN`. Plain variable: `ALLOWED_ORIGIN`.
+When authentication is enabled, configure the client to send the auth message immediately after connecting, before its first work request. Do not expose `WS_API_TOKEN` in public frontend code: browser clients should get short-lived credentials from an authenticated backend.
 
-## Production checklist
-- WSS only; rotate any exposed Ngrok token and never commit credentials.
-- Configure WAF/rate limits and monitor container memory/CPU.
-- Add short-lived WebSocket tickets instead of long-lived query tokens for browser authentication.
-- Add signed R2 uploads, durable job queue, retention policy, and load tests before accepting large media.
-- Health check reports process liveness; it does not guarantee Whisper model is downloaded or warmed.
+## Useful environment variables
+
+- `PORT` (default `8000`)
+- `WHISPER_MODEL` (default `large-v3`; model loads only when audio is requested)
+- `WHISPER_DEVICE` (default `auto`)
+- `WHISPER_COMPUTE_TYPE` (default `default`)
+- `MAX_AUDIO_BYTES` (default 12 MiB)
+- `MAX_TEXT_CHARS` (default 5000)
+- `USE_NGROK` / `NGROK_AUTHTOKEN`
+- `REQUIRE_WS_AUTH` / `WS_API_TOKEN` / `WS_ALLOWED_ORIGINS`
+
+## Production notes
+
+- Use HTTPS/WSS behind a managed ingress or reverse proxy; ngrok is for development, not a durable production endpoint.
+- Configure authentication, origin restrictions, rate limits, per-user quotas, request timeouts, and observability before exposing the endpoint publicly.
+- External translation providers can rate-limit or change availability. This service reports `status: partial` and a warning when both providers fail instead of claiming translation succeeded.
+- `large-v3` can require substantial memory/compute. Choose a smaller model or a GPU-capable host if needed.
+- This service is a single-process baseline. For horizontal scaling, use a job queue for long audio tasks and separate workers with their own model/resource limits.
