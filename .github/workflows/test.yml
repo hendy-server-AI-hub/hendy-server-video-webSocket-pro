@@ -1,0 +1,25 @@
+name: Validate Vietsub Pro
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: python -m py_compile apps/vietsub-realtime/main.py
+      - run: docker build -t vietsub-realtime ./apps/vietsub-realtime
+  worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm install
+      - run: npx tsc --noEmit
+      - run: npx wrangler deploy --dry-run --config apps/api/wrangler.jsonc
