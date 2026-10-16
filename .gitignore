@@ -1,0 +1,1 @@
+.env\n.env.*\n!.env.example\n.venv/\n__pycache__/\n*.py[cod]\nnode_modules/\ndist/\nmodels/\n*.wav\n*.mp3\n*.mp4\n
